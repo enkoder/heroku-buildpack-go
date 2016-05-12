@@ -9,6 +9,7 @@ RED='\033[1;31m'
 NC='\033[0m' # No Color
 CURL="curl -s -L --retry 15 --retry-delay 2" # retry for up to 30 seconds
 
+
 handleDefaultPkgSpec() {
     if [ "$pkgs" = "default" ];
     then
@@ -104,23 +105,6 @@ report_ver() {
   esac
 }
 
-mkdir -p "$1" "$2"
-build=$(cd "$1/" && pwd)
-cache=$(cd "$2/" && pwd)
-env_dir=$3
-buildpack=$(cd "$(dirname $0)/.." && pwd)
-arch=$(uname -m|tr A-Z a-z)
-if test $arch = x86_64
-then arch=amd64
-fi
-plat=$(uname|tr A-Z a-z)-$arch
-
-# Python
-venv=$cache/venv
-mkdir -p $cache/pip
-python=python2.7
-PATH=$buildpack/$plat/bin:$venv/bin:$PATH
-steptxt="----->"
 
 warn() {
     echo -e "${YELLOW} !!    $@${NC}"
@@ -142,6 +126,34 @@ finished() {
     echo "done"
 }
 
+env_dir=$3
+
+# ensures PROJECT ENVAR is set
+if test -f "$env_dir/PROJECT"
+then
+    project=$(cat $env_dir/PROJECT)
+else
+    err "You need to set PROJECT config var"
+    exit 1
+fi
+
+mkdir -p "$1" "$2"
+build=$(cd "$1/" && pwd)
+cache=$(cd "$2/" && pwd)
+buildpack=$(cd "$(dirname $0)/.." && pwd)
+arch=$(uname -m|tr A-Z a-z)
+if test $arch = x86_64
+then arch=amd64
+fi
+plat=$(uname|tr A-Z a-z)-$arch
+
+# Python
+venv=$cache/venv
+mkdir -p $cache/pip
+python=python2.7
+PATH=$buildpack/$plat/bin:$venv/bin:$PATH
+steptxt="----->"
+
 # Default to $SOURCE_VERSION environment variable
 GO_LINKER_VALUE=${SOURCE_VERSION}
 
@@ -159,17 +171,18 @@ then
     done
 fi
 
-if test -f "$build/Godeps/Godeps.json"
+
+if test -f "$build/go/src/$project/Godeps/Godeps.json"
 then
     TOOL="godep"
-    step "Checking Godeps/Godeps.json file."
-    if ! jq -r . < "$build/Godeps/Godeps.json" > /dev/null
+    step "Checking go/src/$project/Godeps/Godeps.json file."
+    if ! jq -r . < "$build/go/src/$project/Godeps/Godeps.json" > /dev/null
     then
         err "Bad Godeps/Godeps.json file"
         exit 1
     fi
-    name=$(<$build/Godeps/Godeps.json jq -r .ImportPath)
-    ver=$(<$build/Godeps/Godeps.json jq -r .GoVersion)
+    name=$(<$build/go/src/$project/Godeps/Godeps.json jq -r .ImportPath)
+    ver=$(<$build/go/src/$project/Godeps/Godeps.json jq -r .GoVersion)
 elif (test -d "$build/src" && test -n "$(find "$build/src" -type f -name '*.go' | sed 1q)")
 then
     TOOL="gb"
@@ -281,14 +294,14 @@ fi
 case $TOOL in
     godep)
         GOBIN=$build/bin export GOBIN
-        GOPATH=$build/.heroku/go export GOPATH
+        GOPATH=$build/go export GOPATH
         PATH=$GOROOT/bin:$PATH
 
         p=$GOPATH/src/$name
-        mkdir -p $p
-        cp -R $build/* $p
+        #mkdir -p $p
+        #cp -R $build/* $p
 
-        pkgs=$(<$build/Godeps/Godeps.json jq -r 'if .Packages then .Packages | join(" ") else "default" end')
+        pkgs=$(<$build/go/src/$project/Godeps/Godeps.json jq -r 'if .Packages then .Packages | join(" ") else "default" end')
         handleDefaultPkgSpec
 
         case $ver in
